@@ -1,5 +1,5 @@
 import streamlit as st
-
+import os
 from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -14,16 +14,23 @@ Context: {context}
 Answer:
 """
 
-pdfs_directory = 'chat-with-pdf/pdfs/'
+pdfs_directory = 'ollama-playground\chat-with-pdf\pdfs'
 
-embeddings = OllamaEmbeddings(model="deepseek-r1:14b")
+embeddings = OllamaEmbeddings(model="deepseek-r1:1.5b")
 vector_store = InMemoryVectorStore(embeddings)
 
-model = OllamaLLM(model="deepseek-r1:14b")
+model = OllamaLLM(model="deepseek-r1:1.5b")
 
 def upload_pdf(file):
-    with open(pdfs_directory + file.name, "wb") as f:
+    if not os.path.exists(pdfs_directory):
+        os.makedirs(pdfs_directory)
+
+    file_path = os.path.join(pdfs_directory, file.name)
+    with open(file_path, "wb") as f:
         f.write(file.getbuffer())
+
+    return file_path  # Return the path for further use
+
 
 def load_pdf(file_path):
     loader = PDFPlumberLoader(file_path)
@@ -60,17 +67,26 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    upload_pdf(uploaded_file)
-    documents = load_pdf(pdfs_directory + uploaded_file.name)
-    chunked_documents = split_text(documents)
-    index_docs(chunked_documents)
+    file_path = upload_pdf(uploaded_file)  # Ensure the file is saved properly
 
-    question = st.chat_input()
+    if os.path.exists(file_path):  # Verify file exists before loading
+        documents = load_pdf(file_path)  # Now passing the correct file path
+        chunked_documents = split_text(documents)
 
-    if question:
-        st.chat_message("user").write(question)
-        related_documents = retrieve_docs(question)
-        answer = answer_question(question, related_documents)
-        st.chat_message("assistant").write(answer)
+        if chunked_documents:
+            index_docs(chunked_documents)
+        else:
+            st.error("No valid text extracted from PDF.")
+
+        question = st.chat_input()
+
+        if question:
+            st.chat_message("user").write(question)
+            related_documents = retrieve_docs(question)
+            answer = answer_question(question, related_documents)
+            st.chat_message("assistant").write(answer)
+    else:
+        st.error("File upload failed.")
+
 
 
